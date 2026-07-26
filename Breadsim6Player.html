@@ -1223,29 +1223,48 @@ document.querySelectorAll('button').forEach(btn => btn.addEventListener('click',
     if (!this.classList.contains('player-name-button')) this.blur();
 }));
 
-// Three separated start slots per alliance.
-function getStartPos(team, slot, startIdx) {
-    const slotOffsets = [-42, 0, 42];
-    let yOff = slotOffsets[slot] ?? 0;
+// Start slots are grouped by the selected location. At a trench, two robots form
+// the front row and a third robot starts centered behind them instead of inside it.
+function getStartGroup(p) {
+    const group = players.filter(other =>
+        other.enabled && other.team === p.team && other.startIdx === p.startIdx
+    );
+    return { slot: group.indexOf(p), size: group.length };
+}
+
+function getStartPos(team, slot, startIdx, groupSize = 1) {
+    const hubOffsets = groupSize === 1 ? [0] : (groupSize === 2 ? [-42, 42] : [-42, 0, 42]);
+    let yOff = hubOffsets[slot] ?? 0;
     if (team === 'red') {
         let x = 156.61 * S - 45, y = FIELD_H/2 + yOff;
-        if (startIdx === 1) { x = 156.61 * S - 20; y = (FIELD_H/2 - HUB_S/2 - BUMP_L - BAR_L) - (TRENCH_L/2) + yOff; }
-        else if (startIdx === 2) { x = 156.61 * S - 20; y = (FIELD_H/2 + HUB_S/2 + BUMP_L + BAR_L) + (TRENCH_L/2) + yOff; }
+        if (startIdx === 1 || startIdx === 2) {
+            const frontRowYOffsets = groupSize === 1 ? [0] : [-21, 21, 0];
+            const trenchCenterY = startIdx === 1
+                ? (FIELD_H/2 - HUB_S/2 - BUMP_L - BAR_L) - (TRENCH_L/2)
+                : (FIELD_H/2 + HUB_S/2 + BUMP_L + BAR_L) + (TRENCH_L/2);
+            x = 156.61 * S - 25 - (slot >= 2 ? 42 : 0);
+            y = trenchCenterY - (BOT_MODELS['turret'].h / 2) + (frontRowYOffsets[slot] ?? 0);
+        }
         return { x, y, a: 0 };
     } else {
         let x = FIELD_W - (156.61 * S) + 10, y = FIELD_H/2 + yOff;
-        if (startIdx === 1) { x = FIELD_W - (156.61 * S) - 15; y = (FIELD_H/2 - HUB_S/2 - BUMP_L - BAR_L) - (TRENCH_L/2) + yOff; }
-        else if (startIdx === 2) { x = FIELD_W - (156.61 * S) - 15; y = (FIELD_H/2 + HUB_S/2 + BUMP_L + BAR_L) + (TRENCH_L/2) + yOff; }
+        if (startIdx === 1 || startIdx === 2) {
+            const frontRowYOffsets = groupSize === 1 ? [0] : [-21, 21, 0];
+            const trenchCenterY = startIdx === 1
+                ? (FIELD_H/2 - HUB_S/2 - BUMP_L - BAR_L) - (TRENCH_L/2)
+                : (FIELD_H/2 + HUB_S/2 + BUMP_L + BAR_L) + (TRENCH_L/2);
+            x = FIELD_W - (156.61 * S) - 10 + (slot >= 2 ? 42 : 0);
+            y = trenchCenterY - (BOT_MODELS['turret'].h / 2) + (frontRowYOffsets[slot] ?? 0);
+        }
         return { x, y, a: Math.PI };
     }
 }
 
 function resetBots() {
-    let slotsUsed = { red: 0, blue: 0 };
     players.forEach(p => {
         if (!p.enabled) { p.bot.x = -1000; p.bot.y = -1000; p.bot.vx = 0; p.bot.vy = 0; p.bot.vAngle = 0; return; }
-        let slot = slotsUsed[p.team]++; 
-        let pos = getStartPos(p.team, slot, p.startIdx);
+        const startGroup = getStartGroup(p);
+        let pos = getStartPos(p.team, startGroup.slot, p.startIdx, startGroup.size);
         p.bot.x = pos.x; p.bot.y = pos.y; p.bot.angle = pos.a;
         p.bot.vx = 0; p.bot.vy = 0; p.bot.vAngle = 0;
         p.bot.prevIntakeInput = false;
@@ -1261,12 +1280,8 @@ function resetBots() {
 function unstickPlayer(p) {
     if (!matchRunning || p.unstickUsed || !p.enabled) return;
     p.unstickUsed = true;
-    let teamSlot = 0;
-    for (let other of players) {
-        if (other.num === p.num) break;
-        if (other.enabled && other.team === p.team) teamSlot++;
-    }
-    const pos = getStartPos(p.team, teamSlot, p.startIdx);
+    const startGroup = getStartGroup(p);
+    const pos = getStartPos(p.team, startGroup.slot, p.startIdx, startGroup.size);
     p.bot.x = pos.x; p.bot.y = pos.y;
     p.bot.vx = 0; p.bot.vy = 0; p.bot.vAngle = 0; p.bot.angle = pos.a;
     p.freezeUntil = Date.now() + 3000;
