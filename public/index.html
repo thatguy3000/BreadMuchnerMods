@@ -1,0 +1,150 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="theme-color" content="#080b10">
+  <title>BreadMuncher Sim</title>
+  <link rel="stylesheet" href="./styles.css">
+</head>
+<body class="offline-layout">
+  <button id="menu-trigger" class="menu-trigger" type="button" aria-label="Open play mode menu" aria-expanded="false" aria-controls="mode-menu">
+    <span></span><span></span><span></span>
+  </button>
+  <div id="menu-backdrop" class="menu-backdrop" hidden></div>
+  <aside id="mode-menu" class="mode-menu" role="dialog" aria-modal="true" aria-labelledby="mode-menu-title" aria-hidden="true">
+    <div class="menu-heading">
+      <div>
+        <p class="eyebrow">BreadMuncher Sim</p>
+        <h1 id="mode-menu-title">Play Mode</h1>
+      </div>
+      <button id="menu-close" class="icon-button" type="button" aria-label="Close play mode menu">×</button>
+    </div>
+
+    <div class="mode-options" role="radiogroup" aria-label="Play mode">
+      <button id="offline-mode" class="mode-option active" type="button" role="radio" aria-checked="true">
+        <span class="mode-icon" aria-hidden="true">⌨</span>
+        <span><strong>Offline Play</strong><small>Up to six players on this device</small></span>
+        <span class="active-check" aria-hidden="true">✓</span>
+      </button>
+      <button id="online-mode" class="mode-option" type="button" role="radio" aria-checked="false">
+        <span class="mode-icon" aria-hidden="true">◎</span>
+        <span><strong>Online Play</strong><small>Join friends with a room code</small></span>
+        <span class="active-check" aria-hidden="true">✓</span>
+      </button>
+    </div>
+
+    <section id="online-room-controls" class="online-room-controls" hidden aria-labelledby="room-controls-title">
+      <h2 id="room-controls-title">Online Room</h2>
+      <p id="connection-status" class="status-line" data-state="idle">Not connected</p>
+      <button id="create-room" class="primary wide" type="button">Create Room</button>
+      <form id="join-room-form">
+        <label for="room-code-input">Room code</label>
+        <div class="join-row">
+          <input id="room-code-input" name="roomCode" maxlength="6" autocomplete="off" spellcheck="false" placeholder="ABC234" aria-describedby="room-code-help">
+          <button class="secondary" type="submit">Join</button>
+        </div>
+        <small id="room-code-help">Six letters or numbers from the host</small>
+      </form>
+      <button id="leave-room" class="danger wide" type="button" hidden>Leave Room</button>
+    </section>
+
+    <p class="menu-note">Mode changes are available before a countdown starts or after a match is stopped.</p>
+  </aside>
+
+  <header class="hud" aria-label="Match score">
+    <div class="team-score red"><span>RED</span><strong id="score-red">0</strong><small>Fuel <b id="fuel-red">0</b></small></div>
+    <div class="match-status">
+      <small class="match-clock-title">FULL MATCH</small>
+      <strong id="match-clock">2:40</strong>
+      <span id="phase-label">MATCH NOT STARTED</span>
+      <small id="phase-timer"></small>
+    </div>
+    <div class="team-score blue"><span>BLUE</span><strong id="score-blue">0</strong><small>Fuel <b id="fuel-blue">0</b></small></div>
+  </header>
+
+  <aside id="offline-red-controls" class="offline-team-controls red-side" aria-labelledby="offline-red-title">
+    <h2 id="offline-red-title" class="offline-team-title">RED ALLIANCE</h2>
+    <div id="offline-red-seats" class="offline-seat-list"></div>
+  </aside>
+
+  <aside id="offline-blue-controls" class="offline-team-controls blue-side" aria-labelledby="offline-blue-title">
+    <h2 id="offline-blue-title" class="offline-team-title">BLUE ALLIANCE</h2>
+    <div id="offline-blue-seats" class="offline-seat-list"></div>
+  </aside>
+
+  <div id="offline-controller-status" class="offline-controller-status" aria-label="Controller connections">
+    <div class="controller-bubble red" data-controller-seat="1"><span class="controller-dot"></span><div class="controller-copy"><div class="controller-map">C1 &rarr; P1 turret</div><div class="controller-state">NOT CONNECTED</div></div></div>
+    <div class="controller-bubble red" data-controller-seat="2"><span class="controller-dot"></span><div class="controller-copy"><div class="controller-map">C2 &rarr; P2 double turret</div><div class="controller-state">NOT CONNECTED</div></div></div>
+    <div class="controller-bubble red" data-controller-seat="3"><span class="controller-dot"></span><div class="controller-copy"><div class="controller-map">C3 &rarr; P3 turret</div><div class="controller-state">NOT CONNECTED</div></div></div>
+    <div class="controller-bubble blue" data-controller-seat="4"><span class="controller-dot"></span><div class="controller-copy"><div class="controller-map">C4 &rarr; P4 double turret</div><div class="controller-state">NOT CONNECTED</div></div></div>
+    <div class="controller-bubble blue" data-controller-seat="5"><span class="controller-dot"></span><div class="controller-copy"><div class="controller-map">C5 &rarr; P5 turret</div><div class="controller-state">NOT CONNECTED</div></div></div>
+    <div class="controller-bubble blue" data-controller-seat="6"><span class="controller-dot"></span><div class="controller-copy"><div class="controller-map">C6 &rarr; P6 double turret</div><div class="controller-state">NOT CONNECTED</div></div></div>
+  </div>
+
+  <main class="game-shell">
+    <section class="field-section" aria-label="Game field">
+      <div id="connection-banner" class="connection-banner" hidden>
+        <span class="spinner" aria-hidden="true"></span>
+        <span id="connection-banner-text">Reconnecting to room…</span>
+      </div>
+      <canvas id="field" aria-label="BreadMuncher game field"></canvas>
+      <div class="match-actions">
+        <button id="controls-button" class="secondary" type="button">Controls</button>
+        <button id="start-button" class="start" type="button">Start Match</button>
+        <button id="reset-button" class="secondary" type="button">Reset Field</button>
+      </div>
+      <div id="quality" class="quality" hidden aria-label="Online connection quality">
+        <span class="quality-dot"></span><span id="quality-text">Online</span>
+      </div>
+    </section>
+
+    <section class="lobby-panel" aria-labelledby="lobby-title">
+      <div class="lobby-heading">
+        <div>
+          <p class="eyebrow" id="mode-kicker">Offline Play</p>
+          <h2 id="lobby-title">Local Players</h2>
+        </div>
+        <div id="room-share" class="room-share" hidden>
+          <small>Room</small>
+          <button id="copy-room" type="button" title="Copy room code"><span id="room-code-display"></span> ⧉</button>
+        </div>
+      </div>
+      <p id="lobby-description" class="lobby-description">Keyboard controls Player 1. Connected gamepads map to Players 1–6.</p>
+      <div id="seat-grid" class="seat-grid"></div>
+    </section>
+  </main>
+
+  <div id="controls-dialog" class="modal" role="dialog" aria-modal="true" aria-labelledby="controls-title" hidden>
+    <div class="modal-card">
+      <button class="modal-close" type="button" data-close-modal aria-label="Close controls">×</button>
+      <p class="eyebrow">How to play</p>
+      <h2 id="controls-title">Game Controls</h2>
+      <div class="control-grid">
+        <section><h3>Keyboard</h3><p><kbd>W</kbd><kbd>A</kbd><kbd>S</kbd><kbd>D</kbd> move</p><p><kbd>←</kbd><kbd>→</kbd> or <kbd>J</kbd><kbd>L</kbd> turn</p><p><kbd>Space</kbd> shoot or pass</p><p><kbd>E</kbd> changes the Blitz intake side</p><p><kbd>U</kbd> uses the one-time unstick</p></section>
+        <section><h3>Gamepad</h3><p>Left stick moves</p><p>Right stick turns</p><p>Right trigger shoots or passes</p><p>Left trigger changes the Blitz intake side</p><p>D-pad up uses unstick</p></section>
+      </div>
+      <p>Offline: gamepads 1–6 control Players 1–6. Online: this browser's keyboard or first active gamepad controls its claimed seat.</p>
+      <button class="primary wide" type="button" data-close-modal>Got it</button>
+    </div>
+  </div>
+
+  <div id="results-dialog" class="modal" role="dialog" aria-modal="true" aria-labelledby="results-title" hidden>
+    <div class="modal-card results-card">
+      <button class="modal-close" type="button" data-close-results aria-label="Close match results">×</button>
+      <p class="eyebrow">Official server result</p>
+      <h2 id="results-title">Match Complete</h2>
+      <div class="results-score">
+        <div class="red"><small>RED</small><strong id="final-red">0</strong></div>
+        <span>FINAL</span>
+        <div class="blue"><small>BLUE</small><strong id="final-blue">0</strong></div>
+      </div>
+      <div id="results-players" class="results-players"></div>
+      <button class="primary wide" type="button" data-close-results>Close Results</button>
+    </div>
+  </div>
+
+  <div id="toast" class="toast" role="status" aria-live="polite" hidden></div>
+  <script type="module" src="./js/app.js"></script>
+</body>
+</html>

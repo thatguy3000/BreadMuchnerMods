@@ -1,0 +1,32 @@
+{
+  "name": "breadmuncher-sim",
+  "version": "1.0.0",
+  "private": true,
+  "type": "module",
+  "main": "desktop/main.cjs",
+  "description": "Server-authoritative online and local multiplayer simulator",
+  "author": "BreadMuncher Sim",
+  "scripts": {
+    "start": "node server/index.js",
+    "dev": "node --watch server/index.js",
+    "desktop": "electron .",
+    "package:win": "electron-forge package --platform=win32 --arch=x64",
+    "make:win": "electron-forge make --platform=win32 --arch=x64",
+    "smoke:win": "node scripts/smoke-desktop.cjs",
+    "test": "node --test tests/*.test.js",
+    "test:e2e": "node --test tests/server-integration.test.js",
+    "check": "node --check server/index.js && node --check public/js/app.js && node --check desktop/main.cjs && node --test tests/*.test.js"
+  },
+  "engines": {
+    "node": ">=20"
+  },
+  "dependencies": {
+    "electron-squirrel-startup": "^1.0.1",
+    "ws": "^8.18.3"
+  },
+  "devDependencies": {
+    "@electron-forge/cli": "^7.11.2",
+    "@electron-forge/maker-squirrel": "^7.11.2",
+    "electron": "^43.2.0"
+  }
+}

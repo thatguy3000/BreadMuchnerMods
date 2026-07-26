@@ -1,0 +1,8 @@
+node_modules/
+.server-*.out
+.server-*.err
+coverage/
+test-results/
+playwright-report/
+out/
+.env

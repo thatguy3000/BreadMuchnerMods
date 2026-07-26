@@ -375,6 +375,24 @@ Verify that the server remains authoritative, local prediction is corrected, mat
 - Re-run the existing offline six-player flow after every networking change.
 - Test keyboard-only, mixed controller/keyboard, disabled seats, cancel-start, stop-match, reset, and replay.
 
+## Implementation status
+
+Implemented in the commit following this plan:
+
+- Rules and protocol: `ONLINE_PROTOCOL.md`
+- Shared deterministic engine: `shared/constants.js`, `shared/state.js`,
+  `shared/simulation.js`, and `shared/protocol.js`
+- Authoritative rooms: `server/game-room.js`, `server/room-manager.js`, and
+  `server/index.js`
+- Accessible mode menu, lobby, renderer, input, networking, interpolation, and
+  local prediction: `public/`
+- Automated simulation, protocol, server, load, snapshot, and UI-contract
+  coverage: `tests/`
+- Run, production, and manual gamepad guidance: `README.md`
+
+The original single-file simulator is retained only as a reference. The
+maintained client is `public/index.html`, served by `npm start`.
+
 ## Definition of done
 
 Online play is ready when six separate browsers can use the left-side menu to select Online Play, join one room, control distinct robots through a full match, reconnect without losing their seat, and always display the server’s identical final score. The same menu must allow the user to return to Offline Play, offline six-player play must remain functional, and ordinary latency should produce smooth remote movement without allowing any client to directly alter match state.
