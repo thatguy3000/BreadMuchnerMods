@@ -2,10 +2,12 @@ const { app, BrowserWindow, dialog } = require("electron");
 const path = require("node:path");
 const { pathToFileURL } = require("node:url");
 
-if (require("electron-squirrel-startup")) {
-  app.quit();
-}
+const squirrelLifecycleEvent = require("electron-squirrel-startup");
 
+// Squirrel launches the new executable during install/update so it can manage
+// shortcuts. Its helper quits asynchronously; do not register normal startup
+// handlers in that process or it can start the game server before quitting.
+if (!squirrelLifecycleEvent) {
 let mainWindow = null;
 let serverModule = null;
 let quitAfterServerClose = false;
@@ -100,3 +102,4 @@ app.on("before-quit", (event) => {
       app.quit();
     });
 });
+}

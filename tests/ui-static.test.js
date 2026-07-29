@@ -99,17 +99,21 @@ test("online rendering uses a low-latency buffered snapshot timeline", async () 
 });
 
 test("Windows desktop entry point embeds the complete web server safely", async () => {
-  const [desktop, packageFile, forge] = await Promise.all([
+  const [desktop, packageFile, forge, updater] = await Promise.all([
     readFile(new URL("desktop/main.cjs", root), "utf8"),
     readFile(new URL("package.json", root), "utf8"),
-    readFile(new URL("forge.config.cjs", root), "utf8")
+    readFile(new URL("forge.config.cjs", root), "utf8"),
+    readFile(new URL("scripts/update-installed-game.ps1", root), "utf8")
   ]);
   const packageJson = JSON.parse(packageFile);
   assert.equal(packageJson.main, "desktop/main.cjs");
   assert.match(packageJson.scripts["make:win"], /electron-forge make/);
   assert.match(desktop, /contextIsolation:\s*true/);
   assert.match(desktop, /nodeIntegration:\s*false/);
+  assert.match(desktop, /if \(!squirrelLifecycleEvent\) \{[\s\S]*app\.requestSingleInstanceLock\(\)/);
   assert.match(desktop, /serverModule\.ready/);
   assert.match(desktop, /document\.querySelector\("#field"\)/);
   assert.match(forge, /BreadMuncher-Sim-Setup\.exe/);
+  assert.match(updater, /function Remove-SupersededInstalledVersions/);
+  assert.match(updater, /Remove-SupersededInstalledVersions\s+Invoke-UpdateCommand \$updateExe/);
 });

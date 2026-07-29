@@ -85,6 +85,42 @@ function Get-NextVersion([string]$packagePath) {
   return "{0}.{1}.{2}" -f $highest.Major, $highest.Minor, $nextPatch
 }
 
+function Remove-SupersededInstalledVersions {
+  if (-not (Test-Path -LiteralPath $installedRoot)) {
+    return
+  }
+
+  $versionDirectories = @(
+    Get-ChildItem -LiteralPath $installedRoot -Directory -Filter "app-*" | ForEach-Object {
+      $candidate = $null
+      if ([version]::TryParse($_.Name.Substring(4), [ref]$candidate)) {
+        [pscustomobject]@{
+          Directory = $_
+          Version = $candidate
+        }
+      }
+    } | Sort-Object -Property Version -Descending
+  )
+  if ($versionDirectories.Count -le 1) {
+    return
+  }
+
+  # Squirrel invokes the --squirrel-obsolete hook in every superseded version.
+  # Old builds did not isolate lifecycle hooks from normal startup, so those
+  # hooks could open the game server and collide with an already-running game.
+  # Keep the newest installed version and remove only validated older app-* dirs.
+  $installedRootPath = [System.IO.Path]::GetFullPath($installedRoot).TrimEnd('\')
+  $installedRootPrefix = $installedRootPath + [System.IO.Path]::DirectorySeparatorChar
+  foreach ($entry in ($versionDirectories | Select-Object -Skip 1)) {
+    $targetPath = [System.IO.Path]::GetFullPath($entry.Directory.FullName)
+    if (-not $targetPath.StartsWith($installedRootPrefix, [System.StringComparison]::OrdinalIgnoreCase)) {
+      throw "Refusing to remove an installed version outside $installedRootPath`: $targetPath"
+    }
+    Write-UpdateLog "Removing superseded installed version $($entry.Directory.Name)."
+    Remove-Item -LiteralPath $targetPath -Recurse -Force
+  }
+}
+
 $lock = $null
 try {
   # A background updater may already be building. Wait for it, then re-check
@@ -137,6 +173,7 @@ try {
     $updateOutput,
     $version
   ) $buildRoot
+  Remove-SupersededInstalledVersions
   Invoke-UpdateCommand $updateExe @("--update", $updateOutput, "--silent")
 
   Set-Content -LiteralPath $versionPath -Value $version
