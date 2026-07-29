@@ -37,12 +37,12 @@ export class InputManager {
     this.onNeutral?.();
   }
 
-  frameForSeat(seat, { online = false } = {}) {
+  frameForSeat(seat, { online = false, inputDevice = null } = {}) {
     const gamepads = navigator.getGamepads?.() || [];
+    const keyboard = online || inputDevice === "keyboard" || (inputDevice === null && seat === 1);
     const gamepad = online
       ? [...gamepads].find((item) => item?.connected)
-      : gamepads[seat - 1];
-    const keyboard = online || seat === 1;
+      : keyboard ? null : gamepads[seat - 1];
     let x = 0;
     let y = 0;
     let rotation = 0;

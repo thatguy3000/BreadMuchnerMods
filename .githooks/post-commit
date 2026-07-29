@@ -1,0 +1,7 @@
+#!/bin/sh
+
+# Queue a Windows/Squirrel update after each successful local commit. The
+# PowerShell process is detached so creating a commit stays fast.
+repo_root="$(git rev-parse --show-toplevel)"
+powershell.exe -NoProfile -ExecutionPolicy Bypass -File "$repo_root/scripts/queue-installed-update.ps1"
+

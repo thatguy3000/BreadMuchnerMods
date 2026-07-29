@@ -25,7 +25,8 @@ const copyPlayerConfig = (player) => ({
   team: player.seat <= 3 ? "red" : "blue",
   model: BOT_MODELS[player.model] ? player.model : "turret",
   start: Number.isInteger(player.start) && player.start >= 0 && player.start < START_LABELS.length ? player.start : 0,
-  enabled: player.enabled !== false
+  enabled: player.enabled !== false,
+  inputDevice: player.inputDevice === "keyboard" ? "keyboard" : "controller"
 });
 
 export function seededRandom(state) {
@@ -219,6 +220,7 @@ export function reconfigurePlayer(state, seat, updates) {
   if (typeof updates.model === "string" && BOT_MODELS[updates.model]) player.model = updates.model;
   if (Number.isInteger(updates.start) && updates.start >= 0 && updates.start < START_LABELS.length) player.start = updates.start;
   if (typeof updates.enabled === "boolean") player.enabled = updates.enabled;
+  if (["keyboard", "controller"].includes(updates.inputDevice)) player.inputDevice = updates.inputDevice;
   const robot = state.robots.find((item) => item.seat === seat);
   if (robot) {
     robot.model = player.model;

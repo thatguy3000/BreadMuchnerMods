@@ -73,12 +73,12 @@ export const SHIFT_STATES = Object.freeze({
 });
 
 export const DEFAULT_PLAYERS = Object.freeze([
-  Object.freeze({ seat: 1, name: "Player 1", team: "red", model: "turret", start: 0, enabled: true }),
-  Object.freeze({ seat: 2, name: "Player 2", team: "red", model: "double turret", start: 0, enabled: true }),
-  Object.freeze({ seat: 3, name: "Player 3", team: "red", model: "turret", start: 0, enabled: true }),
-  Object.freeze({ seat: 4, name: "Player 4", team: "blue", model: "double turret", start: 0, enabled: true }),
-  Object.freeze({ seat: 5, name: "Player 5", team: "blue", model: "turret", start: 0, enabled: true }),
-  Object.freeze({ seat: 6, name: "Player 6", team: "blue", model: "double turret", start: 0, enabled: true })
+  Object.freeze({ seat: 1, name: "Player 1", team: "red", model: "turret", start: 0, enabled: true, inputDevice: "keyboard" }),
+  Object.freeze({ seat: 2, name: "Player 2", team: "red", model: "double turret", start: 0, enabled: true, inputDevice: "controller" }),
+  Object.freeze({ seat: 3, name: "Player 3", team: "red", model: "turret", start: 0, enabled: true, inputDevice: "controller" }),
+  Object.freeze({ seat: 4, name: "Player 4", team: "blue", model: "double turret", start: 0, enabled: true, inputDevice: "controller" }),
+  Object.freeze({ seat: 5, name: "Player 5", team: "blue", model: "turret", start: 0, enabled: true, inputDevice: "controller" }),
+  Object.freeze({ seat: 6, name: "Player 6", team: "blue", model: "double turret", start: 0, enabled: true, inputDevice: "controller" })
 ]);
 
 export const NEUTRAL_INPUT = Object.freeze({

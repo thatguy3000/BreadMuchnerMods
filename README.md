@@ -68,6 +68,22 @@ through Windows Firewall if prompted. All participants in an online room must
 connect to this same server; internet play still requires exposing the server
 through a secure public host or reverse proxy.
 
+### Automatic local updates after commits
+
+On this development computer, Git is configured to run the tracked
+`.githooks/post-commit` hook. After each commit, it tests and packages an exact
+snapshot of that commit in the background, then sends a numbered update to the
+existing Squirrel installation. There is no need to uninstall the game or run
+Setup again. If the game is open, the current match is left alone and the new
+version is used the next time the game starts.
+
+The update log is stored at `.git/breadmuncher-auto-update.log`. To retry an
+update manually, run:
+
+```powershell
+npm.cmd run update:installed
+```
+
 For a build verification without showing the app window:
 
 ```powershell

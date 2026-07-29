@@ -12,6 +12,7 @@
     "desktop": "electron .",
     "package:win": "electron-forge package --platform=win32 --arch=x64",
     "make:win": "electron-forge make --platform=win32 --arch=x64",
+    "update:installed": "powershell.exe -NoProfile -ExecutionPolicy Bypass -File scripts/update-installed-game.ps1",
     "smoke:win": "node scripts/smoke-desktop.cjs",
     "test": "node --test tests/*.test.js",
     "test:e2e": "node --test tests/server-integration.test.js",

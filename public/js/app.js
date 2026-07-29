@@ -37,9 +37,19 @@ class BreadMuncherApp {
   }
 
   createLocalState() {
+    let keyboardAssigned = false;
     const players = DEFAULT_PLAYERS.map((player) => ({
       ...player,
-      name: localStorage.getItem(`breadsim-player-name-${player.seat}`) || player.name
+      name: localStorage.getItem(`breadsim-player-name-${player.seat}`) || player.name,
+      inputDevice: (() => {
+        const saved = localStorage.getItem(`breadsim-player-input-${player.seat}`);
+        const requested = ["keyboard", "controller"].includes(saved) ? saved : player.inputDevice;
+        if (requested === "keyboard" && !keyboardAssigned) {
+          keyboardAssigned = true;
+          return "keyboard";
+        }
+        return "controller";
+      })()
     }));
     return createGameState({ seed: 0x5eed1234, players });
   }
@@ -226,10 +236,20 @@ class BreadMuncherApp {
       this.ui.toast("Player settings are locked during a match.", true);
       return;
     }
+    if (update.inputDevice === "keyboard") {
+      for (const player of this.localState.players) {
+        if (player.seat === seat || player.inputDevice !== "keyboard") continue;
+        reconfigurePlayer(this.localState, player.seat, { inputDevice: "controller" });
+        localStorage.setItem(`breadsim-player-input-${player.seat}`, "controller");
+      }
+    }
     reconfigurePlayer(this.localState, seat, update);
     if (typeof update.name === "string") {
       const player = this.localState.players.find((item) => item.seat === seat);
       localStorage.setItem(`breadsim-player-name-${seat}`, player.name);
+    }
+    if (["keyboard", "controller"].includes(update.inputDevice)) {
+      localStorage.setItem(`breadsim-player-input-${seat}`, update.inputDevice);
     }
     this.renderLocalLobby();
   }
@@ -253,7 +273,9 @@ class BreadMuncherApp {
     while (this.accumulator >= FIXED_DT) {
       const inputs = {};
       for (const player of this.localState.players) {
-        if (player.enabled) inputs[player.seat] = this.input.frameForSeat(player.seat);
+        if (player.enabled) {
+          inputs[player.seat] = this.input.frameForSeat(player.seat, { inputDevice: player.inputDevice });
+        }
       }
       const events = stepSimulation(this.localState, inputs, FIXED_DT, this.localState.simulationTime + FIXED_DT);
       if (events.some((event) => event.type === "matchEnded")) {

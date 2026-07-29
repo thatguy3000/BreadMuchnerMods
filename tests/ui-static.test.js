@@ -53,6 +53,18 @@ test("both modes use the fixed alliance panels from the legacy layout", async ()
   assert.match(ui, /offlinePlayerCard\(player, robotStats\.get\(player\.seat\), roomState\)/);
 });
 
+test("offline seats independently toggle participation and input device", async () => {
+  const [ui, app, input] = await Promise.all([
+    readFile(new URL("public/js/ui.js", root), "utf8"),
+    readFile(new URL("public/js/app.js", root), "utf8"),
+    readFile(new URL("public/js/input.js", root), "utf8")
+  ]);
+  assert.doesNotMatch(ui, /enabled\.disabled\s*=\s*player\.seat\s*===\s*1/);
+  assert.match(ui, /inputDevice: player\.inputDevice === "keyboard" \? "controller" : "keyboard"/);
+  assert.match(app, /frameForSeat\(player\.seat, \{ inputDevice: player\.inputDevice \}\)/);
+  assert.match(input, /keyboard \? null : gamepads\[seat - 1\]/);
+});
+
 test("full match and excluded pause clocks are rendered separately", async () => {
   const [html, ui] = await Promise.all([
     readFile(new URL("public/index.html", root), "utf8"),

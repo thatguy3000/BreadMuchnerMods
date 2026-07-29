@@ -167,7 +167,7 @@ export class UI {
     document.querySelector("#lobby-title").textContent = mode === "online" ? "Room Lobby" : "Local Players";
     document.querySelector("#lobby-description").textContent = mode === "online"
       ? "Claim one seat. Only your player settings are editable, and the host controls the match."
-      : "Keyboard controls Player 1. Connected gamepads map to Players 1–6.";
+      : "Choose keyboard or a numbered controller for every enabled player.";
     document.querySelector("#quality").hidden = mode !== "online";
     if (mode === "online") {
       document.querySelector("#start-button").disabled = !this.roomState?.isHost || !this.roomState?.ownedSeat;
@@ -261,7 +261,6 @@ export class UI {
       enabled.disabled = true;
     } else {
       enabled.textContent = `PLAYER ${player.seat}: ${player.enabled === false ? "OFF" : "ON"}`;
-      enabled.disabled = player.seat === 1;
       enabled.addEventListener("click", () => this.actions.updatePlayer(player.seat, { enabled: player.enabled === false }));
     }
 
@@ -281,8 +280,13 @@ export class UI {
     input.className = `offline-control-button ${player.team}-team`;
     input.textContent = online
       ? `P${player.seat}: ${owned ? "KEYBOARD / CONTROLLER" : claimed ? "ONLINE" : "OPEN SEAT"}`
-      : `P${player.seat}: ${player.seat === 1 ? "KEYBOARD" : "CONTROLLER"}`;
-    input.disabled = true;
+      : `P${player.seat} INPUT: ${player.inputDevice.toUpperCase()}`;
+    input.disabled = online;
+    if (!online) {
+      input.addEventListener("click", () => this.actions.updatePlayer(player.seat, {
+        inputDevice: player.inputDevice === "keyboard" ? "controller" : "keyboard"
+      }));
+    }
 
     const start = document.createElement("button");
     start.type = "button";
@@ -302,8 +306,9 @@ export class UI {
       const seat = Number(bubble.dataset.controllerSeat);
       const player = players.find((item) => item.seat === seat);
       const owned = online && roomState?.ownedSeat === seat;
-      const gamepad = online ? (owned ? onlineGamepad : null) : gamepads[seat - 1];
-      const connected = online ? Boolean(player?.connected) : Boolean(gamepad?.connected);
+      const keyboard = !online && player?.inputDevice === "keyboard";
+      const gamepad = online ? (owned ? onlineGamepad : null) : keyboard ? null : gamepads[seat - 1];
+      const connected = online ? Boolean(player?.connected) : keyboard || Boolean(gamepad?.connected);
       const active = Boolean(gamepad?.connected) && (
         gamepad.axes?.some((axis) => Math.abs(axis) > 0.16)
         || gamepad.buttons?.some((button) => button.pressed)
@@ -312,10 +317,10 @@ export class UI {
       bubble.classList.toggle("active", active);
       bubble.querySelector(".controller-map").textContent = online
         ? `P${seat} ${player?.model || "robot"}`
-        : `C${seat} → P${seat} ${player?.model || "robot"}`;
+        : `${keyboard ? "KEYBOARD" : `C${seat}`} → P${seat} ${player?.model || "robot"}`;
       bubble.querySelector(".controller-state").textContent = online
         ? owned ? (active ? "LOCAL GAMEPAD ACTIVE" : "LOCAL CONTROL") : connected ? "REMOTE ONLINE" : player?.reserved ? "RESERVED" : "OPEN SEAT"
-        : active ? "ACTIVE" : connected ? "CONNECTED" : "NOT CONNECTED";
+        : player?.enabled === false ? "PLAYER OFF" : keyboard ? "SELECTED" : active ? "ACTIVE" : connected ? "CONNECTED" : "NOT CONNECTED";
     });
   }
 
