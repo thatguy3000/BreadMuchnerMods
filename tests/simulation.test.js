@@ -221,6 +221,37 @@ test("all robot models consume inventory when firing", () => {
   }
 });
 
+test("dumper launches fuel from the side opposite its intake", () => {
+  const state = createGameState({ seed: 19 });
+  state.balls = [];
+  reconfigurePlayer(state, 1, { model: "dumper" });
+  const robot = state.robots[0];
+  robot.x = 100;
+  robot.y = 100;
+  robot.inventory = 8;
+
+  for (let tick = 0; tick < 240 && state.projectiles.length === 0; tick += 1) {
+    stepSimulation(state, { 1: { ...NEUTRAL_INPUT, action: true, sequence: tick } }, FIXED_DT, state.simulationTime + FIXED_DT);
+  }
+
+  assert.ok(state.projectiles.length > 0, "dumper should finish aligning and launch fuel");
+  const projectile = state.projectiles[0];
+  const model = BOT_MODELS.dumper;
+  const centerX = robot.x + model.w / 2;
+  const centerY = robot.y + model.h / 2;
+  const launchX = projectile.x - projectile.vx;
+  const launchY = projectile.y - projectile.vy;
+  const intakeDirectionX = Math.cos(robot.angle);
+  const intakeDirectionY = Math.sin(robot.angle);
+  const launchAlongIntakeAxis = (launchX - centerX) * intakeDirectionX
+    + (launchY - centerY) * intakeDirectionY;
+  const velocityAlongIntakeAxis = projectile.vx * intakeDirectionX
+    + projectile.vy * intakeDirectionY;
+
+  assert.ok(launchAlongIntakeAxis < -(model.w / 2), "launch point should be behind the intake");
+  assert.ok(velocityAlongIntakeAxis < 0, "fuel should travel away from the intake side");
+});
+
 test("standard shots leave the robot front at the original offline speed", () => {
   const state = createGameState({ seed: 17 });
   state.balls = [];

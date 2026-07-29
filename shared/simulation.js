@@ -146,7 +146,9 @@ function addProjectile(state, robot, alliance, seat, isShooting, stream, streams
   // Standard turret shots physically leave the robot's front edge even when
   // their velocity is aimed toward a hub or pass target. Multi-stream robots
   // keep their stream spacing perpendicular to their assisted launch angle.
-  const originAngle = standard ? robot.angle : launchAngle;
+  const originAngle = standard
+    ? robot.angle
+    : robot.model === "dumper" ? robot.angle + Math.PI : launchAngle;
   const originDistance = model.w / 2 + (standard ? 5 : 4);
   state.projectiles.push({
     id: state.nextEntityId++,
@@ -269,7 +271,11 @@ function updateRobot(state, robot, input, dt, random) {
         targetY = centerY < FIELD_H / 2 ? FIELD_H / 2 - clearance : FIELD_H / 2 + clearance;
       }
     }
-    let difference = Math.atan2(targetY - centerY, targetX - centerX) - robot.angle;
+    const targetAngle = Math.atan2(targetY - centerY, targetX - centerX);
+    // The dumper intakes from its front and launches from its rear, so its
+    // chassis must face away from the assisted target before releasing fuel.
+    const desiredRobotAngle = robot.model === "dumper" ? targetAngle - Math.PI : targetAngle;
+    let difference = desiredRobotAngle - robot.angle;
     while (difference < -Math.PI) difference += Math.PI * 2;
     while (difference > Math.PI) difference -= Math.PI * 2;
     const cap = 0.2 * speedModifier * (isShooting ? 0.45 : 0.6);
