@@ -1,4 +1,4 @@
-export const PROTOCOL_VERSION = 1;
+export const PROTOCOL_VERSION = 2;
 export const TICK_RATE = 60;
 export const FIXED_DT = 1 / TICK_RATE;
 // Thirty authoritative updates per second cuts remote motion latency while
@@ -73,12 +73,12 @@ export const SHIFT_STATES = Object.freeze({
 });
 
 export const DEFAULT_PLAYERS = Object.freeze([
-  Object.freeze({ seat: 1, name: "Player 1", team: "red", model: "turret", start: 0, enabled: true, inputDevice: "keyboard" }),
-  Object.freeze({ seat: 2, name: "Player 2", team: "red", model: "double turret", start: 0, enabled: true, inputDevice: "controller" }),
-  Object.freeze({ seat: 3, name: "Player 3", team: "red", model: "turret", start: 0, enabled: true, inputDevice: "controller" }),
-  Object.freeze({ seat: 4, name: "Player 4", team: "blue", model: "double turret", start: 0, enabled: true, inputDevice: "controller" }),
-  Object.freeze({ seat: 5, name: "Player 5", team: "blue", model: "turret", start: 0, enabled: true, inputDevice: "controller" }),
-  Object.freeze({ seat: 6, name: "Player 6", team: "blue", model: "double turret", start: 0, enabled: true, inputDevice: "controller" })
+  Object.freeze({ seat: 1, name: "Player 1", team: "red", model: "turret", start: 0, enabled: true, inputSource: "keyboard" }),
+  Object.freeze({ seat: 2, name: "Player 2", team: "red", model: "double turret", start: 0, enabled: true, inputSource: "gamepad:1" }),
+  Object.freeze({ seat: 3, name: "Player 3", team: "red", model: "turret", start: 0, enabled: true, inputSource: "gamepad:2" }),
+  Object.freeze({ seat: 4, name: "Player 4", team: "blue", model: "double turret", start: 0, enabled: true, inputSource: "gamepad:3" }),
+  Object.freeze({ seat: 5, name: "Player 5", team: "blue", model: "turret", start: 0, enabled: true, inputSource: "gamepad:4" }),
+  Object.freeze({ seat: 6, name: "Player 6", team: "blue", model: "double turret", start: 0, enabled: true, inputSource: "gamepad:5" })
 ]);
 
 export const NEUTRAL_INPUT = Object.freeze({

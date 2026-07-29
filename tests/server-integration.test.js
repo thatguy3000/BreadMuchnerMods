@@ -138,6 +138,19 @@ test("real HTTP/WebSocket server supports room, input, host, and reconnect flows
 
   host.socket.send(protocol("stopMatch", { roomCode: created.roomCode }));
   await host.waitFor((message) => message.type === "matchEvent" && message.event?.type === "matchStopped");
+
+  host.socket.send(protocol("createSwapRequest", { roomCode: created.roomCode, targetSeat: 4 }));
+  const targetReview = await reconnected.waitFor((message) => message.type === "roomState" && message.swapActions?.[0]?.role === "target");
+  const swapId = targetReview.swapActions[0].id;
+  reconnected.socket.send(protocol("respondSwapRequest", { roomCode: created.roomCode, requestId: swapId, accepted: true }));
+  await host.waitFor((message) => message.type === "roomState" && message.swapActions?.some((action) => action.id === swapId && action.role === "host"));
+  host.socket.send(protocol("reviewSwapRequest", { roomCode: created.roomCode, requestId: swapId, accepted: true }));
+  const applied = await host.waitFor((message) => message.type === "swapApplied" && message.requestId === swapId);
+  assert.equal(applied.sourceSeat, 1);
+  assert.equal(applied.targetSeat, 4);
+  assert.equal((await host.waitFor((message) => message.type === "roomState" && message.ownedSeat === 4)).ownedSeat, 4);
+  assert.equal((await reconnected.waitFor((message) => message.type === "roomState" && message.ownedSeat === 1)).ownedSeat, 1);
+
   host.socket.close();
   reconnected.socket.close();
   await Promise.all([once(host.socket, "close"), once(reconnected.socket, "close")]);

@@ -77,6 +77,22 @@ export class OnlineClient extends EventTarget {
     this.send("updateLobbyPlayer", { roomCode: this.roomCode, seat: this.ownedSeat, player });
   }
 
+  requestSwap(targetSeat) {
+    this.send("createSwapRequest", { roomCode: this.roomCode, targetSeat });
+  }
+
+  respondSwap(requestId, accepted) {
+    this.send("respondSwapRequest", { roomCode: this.roomCode, requestId, accepted });
+  }
+
+  reviewSwap(requestId, accepted) {
+    this.send("reviewSwapRequest", { roomCode: this.roomCode, requestId, accepted });
+  }
+
+  cancelSwap(requestId) {
+    this.send("cancelSwapRequest", { roomCode: this.roomCode, requestId });
+  }
+
   command(type) {
     this.send(type, { roomCode: this.roomCode });
   }

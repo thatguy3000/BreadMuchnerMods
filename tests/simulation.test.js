@@ -72,19 +72,19 @@ test("grouped starting positions do not overlap and mirror alliances", () => {
   assert.ok(blue.every((position) => position.angle === Math.PI));
 });
 
-test("every offline player can be disabled and can select an input device", () => {
+test("every offline player can be disabled and can select an explicit input source", () => {
   const state = createGameState();
-  assert.equal(reconfigurePlayer(state, 1, { enabled: false, inputDevice: "controller" }), true);
-  assert.equal(reconfigurePlayer(state, 4, { inputDevice: "keyboard" }), true);
+  assert.equal(reconfigurePlayer(state, 1, { enabled: false, inputSource: "gamepad:0" }), true);
+  assert.equal(reconfigurePlayer(state, 4, { inputSource: "keyboard" }), true);
   assert.equal(state.players[0].enabled, false);
-  assert.equal(state.players[0].inputDevice, "controller");
-  assert.equal(state.players[3].inputDevice, "keyboard");
+  assert.equal(state.players[0].inputSource, "gamepad:0");
+  assert.equal(state.players[3].inputSource, "keyboard");
   assert.equal(state.robots[0].x, -1000);
 
   resetMatch(state);
   assert.equal(state.players[0].enabled, false);
-  assert.equal(state.players[0].inputDevice, "controller");
-  assert.equal(state.players[3].inputDevice, "keyboard");
+  assert.equal(state.players[0].inputSource, "gamepad:0");
+  assert.equal(state.players[3].inputSource, "keyboard");
 });
 
 test("match countdown and phase boundaries are simulation-clock driven", () => {

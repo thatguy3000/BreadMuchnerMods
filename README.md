@@ -21,6 +21,17 @@ Use the hamburger button in the upper-left to choose Offline Play or Online
 Play. In an online room, claim one seat and share the room code. The host must
 claim a seat before starting.
 
+In Offline Play, the input activity chart shows live stick, button, and keyboard
+activity. Use the selector under an input to assign it to any enabled player;
+assigning it to an occupied player swaps the two input assignments. The keyboard
+and every controller can each control only one player at a time.
+
+`Swap Spots` moves a player's name and control assignment to another robot spot
+without moving either robot or its score. Offline swaps are available between
+matches. Online swaps use a request flow: an occupied target accepts first, then
+the host approves. Requests created during a match wait until results are closed,
+and a new match cannot start while requests remain pending.
+
 ## Test it
 
 ```powershell

@@ -53,16 +53,37 @@ test("both modes use the fixed alliance panels from the legacy layout", async ()
   assert.match(ui, /offlinePlayerCard\(player, robotStats\.get\(player\.seat\), roomState\)/);
 });
 
-test("offline seats independently toggle participation and input device", async () => {
+test("offline seats expose explicit input assignments and live activity", async () => {
   const [ui, app, input] = await Promise.all([
     readFile(new URL("public/js/ui.js", root), "utf8"),
     readFile(new URL("public/js/app.js", root), "utf8"),
     readFile(new URL("public/js/input.js", root), "utf8")
   ]);
   assert.doesNotMatch(ui, /enabled\.disabled\s*=\s*player\.seat\s*===\s*1/);
-  assert.match(ui, /inputDevice: player\.inputDevice === "keyboard" \? "controller" : "keyboard"/);
-  assert.match(app, /frameForSeat\(player\.seat, \{ inputDevice: player\.inputDevice \}\)/);
-  assert.match(input, /keyboard \? null : gamepads\[seat - 1\]/);
+  assert.match(ui, /inputSourceCard\(source, players, gamepads, locked\)/);
+  assert.match(ui, /this\.actions\.assignInput\(source/);
+  assert.match(ui, /updateInputActivity\(sources\)/);
+  assert.match(app, /frameForSeat\(player\.seat, \{ inputSource: player\.inputSource \}\)/);
+  assert.match(input, /gamepads\[assignedIndex\]/);
+  assert.match(input, /activitySnapshot\(\)/);
+  assert.match(input, /anyButton: Boolean\(gamepad\.buttons\?\.some/);
+  assert.match(input, /anyAxis: Boolean\(gamepad\.axes\?\.some/);
+});
+
+test("Swap Spots UI is accessible and keeps field positions out of the workflow", async () => {
+  const [html, ui, app] = await Promise.all([
+    readFile(new URL("public/index.html", root), "utf8"),
+    readFile(new URL("public/js/ui.js", root), "utf8"),
+    readFile(new URL("public/js/app.js", root), "utf8")
+  ]);
+  assert.match(html, /id="swap-spots-button"[^>]+aria-haspopup="dialog"/);
+  assert.match(html, /id="swap-dialog"[^>]+role="dialog"[^>]+aria-modal="true"/);
+  assert.match(ui, /showSwapComposer\(players/);
+  assert.match(ui, /showSwapApproval\(action, players\)/);
+  assert.match(app, /swapPlayerProfiles\(this\.localState\.players, sourceSeat, targetSeat\)/);
+  assert.match(app, /this\.ui\.resultsOpen \|\| this\.ui\.swapDialogOpen/);
+  assert.match(ui, /closeResults\(\)[\s\S]*this\.actions\.resultsClosed/);
+  assert.doesNotMatch(app, /robot\.x\s*=|robot\.y\s*=/);
 });
 
 test("full match and excluded pause clocks are rendered separately", async () => {

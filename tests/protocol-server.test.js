@@ -100,6 +100,156 @@ test("only owners edit/send input and only the host starts", (context) => {
   assert.equal(host.take("error").code, "LOBBY_LOCKED");
 });
 
+test("occupied online swaps require target then host approval and preserve robot state", (context) => {
+  const room = new GameRoom("ABC234", { log: () => {} });
+  context.after(() => room.close());
+  const host = new FakeSocket();
+  const guest = new FakeSocket();
+  room.addConnection(host);
+  room.addConnection(guest);
+  room.handle(host, message("claimSeat", { seat: 1 }));
+  room.handle(guest, message("claimSeat", { seat: 2 }));
+  room.state.players[0].name = "Host Driver";
+  room.state.players[1].name = "Guest Driver";
+  Object.assign(room.state.robots[0], { x: 123, y: 45, score: 7 });
+  Object.assign(room.state.robots[1], { x: 678, y: 90, score: 11 });
+  const robotsBefore = room.state.robots.slice(0, 2).map(({ x, y, score, model, team }) => ({ x, y, score, model, team }));
+
+  room.handle(host, message("createSwapRequest", { targetSeat: 2 }));
+  const request = [...room.pendingSwaps.values()][0];
+  assert.equal(request.status, "awaiting_target");
+  assert.equal(guest.take("roomState").swapActions[0].role, "target");
+  room.handle(host, message("startMatch"));
+  assert.equal(host.take("error").code, "SWAPS_PENDING");
+
+  room.handle(guest, message("respondSwapRequest", { requestId: request.id, accepted: true }));
+  assert.equal(request.status, "awaiting_host");
+  assert.equal(host.take("roomState").swapActions[0].role, "host");
+  room.handle(host, message("reviewSwapRequest", { requestId: request.id, accepted: true }));
+
+  assert.equal(room.connections.get(host).seat, 2);
+  assert.equal(room.connections.get(guest).seat, 1);
+  assert.equal(room.ownership.get(2).socket, host);
+  assert.equal(room.ownership.get(1).socket, guest);
+  assert.deepEqual(room.state.players.slice(0, 2).map((player) => player.name), ["Guest Driver", "Host Driver"]);
+  assert.deepEqual(room.state.robots.slice(0, 2).map(({ x, y, score, model, team }) => ({ x, y, score, model, team })), robotsBefore);
+  assert.equal(room.pendingSwaps.size, 0);
+  assert.equal(host.take("swapApplied").targetSeat, 2);
+});
+
+test("moving to an open online spot needs host approval and opens the source", (context) => {
+  const room = new GameRoom("ABC234", { log: () => {} });
+  context.after(() => room.close());
+  const host = new FakeSocket();
+  const challenger = new FakeSocket();
+  room.addConnection(host);
+  room.addConnection(challenger);
+  room.handle(host, message("claimSeat", { seat: 1 }));
+  room.state.players[0].name = "Solo Driver";
+  const targetRobot = { ...room.state.robots[2] };
+
+  room.handle(host, message("createSwapRequest", { targetSeat: 3 }));
+  const request = [...room.pendingSwaps.values()][0];
+  assert.equal(request.status, "awaiting_host");
+  room.handle(challenger, message("claimSeat", { seat: 3 }));
+  assert.equal(challenger.take("error").code, "SEAT_SWAP_RESERVED");
+  room.handle(host, message("reviewSwapRequest", { requestId: request.id, accepted: true }));
+
+  assert.equal(room.connections.get(host).seat, 3);
+  assert.equal(room.ownership.has(1), false);
+  assert.equal(room.ownership.get(3).socket, host);
+  assert.equal(room.state.players[0].name, "Player 1");
+  assert.equal(room.state.players[2].name, "Solo Driver");
+  assert.deepEqual(room.state.robots[2], targetRobot);
+});
+
+test("live-match swap requests queue until play stops", (context) => {
+  const room = new GameRoom("ABC234", { log: () => {} });
+  context.after(() => room.close());
+  const host = new FakeSocket();
+  const guest = new FakeSocket();
+  room.addConnection(host);
+  room.addConnection(guest);
+  room.handle(host, message("claimSeat", { seat: 1 }));
+  room.handle(guest, message("claimSeat", { seat: 2 }));
+  room.state.status = "running";
+
+  room.handle(host, message("createSwapRequest", { targetSeat: 2 }));
+  const request = [...room.pendingSwaps.values()][0];
+  assert.equal(request.status, "queued");
+  assert.deepEqual(guest.take("roomState").swapActions, []);
+  room.handle(guest, message("respondSwapRequest", { requestId: request.id, accepted: true }));
+  assert.equal(guest.take("error").code, "SWAP_NOT_READY");
+
+  room.handle(host, message("stopMatch"));
+  assert.equal(request.status, "awaiting_target");
+  assert.equal(guest.take("roomState").swapActions[0].role, "target");
+});
+
+test("swap queue permits disjoint requests, rejects conflicts, and supports manual cancellation", (context) => {
+  const room = new GameRoom("ABC234", { log: () => {} });
+  context.after(() => room.close());
+  const sockets = Array.from({ length: 4 }, () => new FakeSocket());
+  sockets.forEach((socket) => room.addConnection(socket));
+  sockets.forEach((socket, index) => room.handle(socket, message("claimSeat", { seat: index + 1 })));
+
+  room.handle(sockets[0], message("createSwapRequest", { targetSeat: 2 }));
+  room.handle(sockets[2], message("createSwapRequest", { targetSeat: 4 }));
+  assert.equal(room.pendingSwaps.size, 2);
+  room.handle(sockets[1], message("createSwapRequest", { targetSeat: 3 }));
+  assert.equal(sockets[1].take("error").code, "SWAP_CONFLICT");
+  const first = [...room.pendingSwaps.values()][0];
+  room.handle(sockets[0], message("cancelSwapRequest", { requestId: first.id }));
+  assert.equal(room.pendingSwaps.size, 1);
+  assert.equal(sockets[0].take("swapRejected").requestId, first.id);
+});
+
+test("denied swaps change nothing and the host can cancel an unanswered target request", (context) => {
+  const room = new GameRoom("ABC234", { log: () => {} });
+  context.after(() => room.close());
+  const host = new FakeSocket();
+  const guest = new FakeSocket();
+  room.addConnection(host);
+  room.addConnection(guest);
+  room.handle(host, message("claimSeat", { seat: 1 }));
+  room.handle(guest, message("claimSeat", { seat: 2 }));
+
+  room.handle(host, message("createSwapRequest", { targetSeat: 2 }));
+  let request = [...room.pendingSwaps.values()][0];
+  room.handle(guest, message("respondSwapRequest", { requestId: request.id, accepted: false }));
+  assert.equal(room.connections.get(host).seat, 1);
+  assert.equal(room.connections.get(guest).seat, 2);
+  assert.equal(room.pendingSwaps.size, 0);
+
+  room.handle(guest, message("createSwapRequest", { targetSeat: 1 }));
+  request = [...room.pendingSwaps.values()][0];
+  room.handle(host, message("cancelSwapRequest", { requestId: request.id }));
+  assert.equal(room.pendingSwaps.size, 0);
+  assert.equal(guest.take("swapRejected").requestId, request.id);
+});
+
+test("pending host review follows host transfer", (context) => {
+  const room = new GameRoom("ABC234", { log: () => {} });
+  context.after(() => room.close());
+  const originalHost = new FakeSocket();
+  const target = new FakeSocket();
+  room.addConnection(originalHost);
+  room.addConnection(target);
+  room.handle(originalHost, message("claimSeat", { seat: 1 }));
+  room.handle(target, message("claimSeat", { seat: 2 }));
+  room.handle(originalHost, message("createSwapRequest", { targetSeat: 2 }));
+  const request = [...room.pendingSwaps.values()][0];
+  room.handle(target, message("respondSwapRequest", { requestId: request.id, accepted: true }));
+
+  room.removeConnection(originalHost);
+  const transferred = target.take("roomState");
+  assert.equal(transferred.isHost, true);
+  assert.equal(transferred.swapActions[0].role, "host");
+  room.handle(target, message("reviewSwapRequest", { requestId: request.id, accepted: true }));
+  assert.equal(room.connections.get(target).seat, 1);
+  assert.equal(room.ownership.get(2).connected, false);
+});
+
 test("stale input is ignored and valid axes are clamped", (context) => {
   const room = new GameRoom("ABC234", { log: () => {} });
   context.after(() => room.close());

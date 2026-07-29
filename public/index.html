@@ -8,9 +8,14 @@
   <link rel="stylesheet" href="./styles.css">
 </head>
 <body class="offline-layout">
-  <button id="menu-trigger" class="menu-trigger" type="button" aria-label="Open play mode menu" aria-expanded="false" aria-controls="mode-menu">
-    <span></span><span></span><span></span>
-  </button>
+  <div class="corner-actions">
+    <button id="menu-trigger" class="menu-trigger" type="button" aria-label="Open play mode menu" aria-expanded="false" aria-controls="mode-menu">
+      <span></span><span></span><span></span>
+    </button>
+    <button id="swap-spots-button" class="swap-spots-button" type="button" aria-haspopup="dialog" aria-controls="swap-dialog">
+      Swap Spots <span id="swap-count" class="swap-count" hidden></span>
+    </button>
+  </div>
   <div id="menu-backdrop" class="menu-backdrop" hidden></div>
   <aside id="mode-menu" class="mode-menu" role="dialog" aria-modal="true" aria-labelledby="mode-menu-title" aria-hidden="true">
     <div class="menu-heading">
@@ -73,14 +78,11 @@
     <div id="offline-blue-seats" class="offline-seat-list"></div>
   </aside>
 
-  <div id="offline-controller-status" class="offline-controller-status" aria-label="Controller connections">
-    <div class="controller-bubble red" data-controller-seat="1"><span class="controller-dot"></span><div class="controller-copy"><div class="controller-map">C1 &rarr; P1 turret</div><div class="controller-state">NOT CONNECTED</div></div></div>
-    <div class="controller-bubble red" data-controller-seat="2"><span class="controller-dot"></span><div class="controller-copy"><div class="controller-map">C2 &rarr; P2 double turret</div><div class="controller-state">NOT CONNECTED</div></div></div>
-    <div class="controller-bubble red" data-controller-seat="3"><span class="controller-dot"></span><div class="controller-copy"><div class="controller-map">C3 &rarr; P3 turret</div><div class="controller-state">NOT CONNECTED</div></div></div>
-    <div class="controller-bubble blue" data-controller-seat="4"><span class="controller-dot"></span><div class="controller-copy"><div class="controller-map">C4 &rarr; P4 double turret</div><div class="controller-state">NOT CONNECTED</div></div></div>
-    <div class="controller-bubble blue" data-controller-seat="5"><span class="controller-dot"></span><div class="controller-copy"><div class="controller-map">C5 &rarr; P5 turret</div><div class="controller-state">NOT CONNECTED</div></div></div>
-    <div class="controller-bubble blue" data-controller-seat="6"><span class="controller-dot"></span><div class="controller-copy"><div class="controller-map">C6 &rarr; P6 double turret</div><div class="controller-state">NOT CONNECTED</div></div></div>
-  </div>
+  <section id="offline-controller-status" class="offline-controller-status" aria-label="Controller activity and assignments">
+    <h2>INPUT ACTIVITY &amp; ASSIGNMENTS</h2>
+    <div id="input-source-grid" class="input-source-grid"></div>
+    <p id="input-activity-announcement" class="sr-only" aria-live="polite"></p>
+  </section>
 
   <main class="game-shell">
     <section class="field-section" aria-label="Game field">
@@ -110,7 +112,7 @@
           <button id="copy-room" type="button" title="Copy room code"><span id="room-code-display"></span> ⧉</button>
         </div>
       </div>
-      <p id="lobby-description" class="lobby-description">Choose keyboard or a numbered controller for every enabled player.</p>
+      <p id="lobby-description" class="lobby-description">Use the live input chart to assign keyboard and controllers to enabled players.</p>
       <div id="seat-grid" class="seat-grid"></div>
     </section>
   </main>
@@ -124,7 +126,7 @@
         <section><h3>Keyboard</h3><p><kbd>W</kbd><kbd>A</kbd><kbd>S</kbd><kbd>D</kbd> move</p><p><kbd>←</kbd><kbd>→</kbd> or <kbd>J</kbd><kbd>L</kbd> turn</p><p><kbd>Space</kbd> shoot or pass</p><p><kbd>E</kbd> changes the Blitz intake side</p><p><kbd>U</kbd> uses the one-time unstick</p></section>
         <section><h3>Gamepad</h3><p>Left stick moves</p><p>Right stick turns</p><p>Right trigger shoots or passes</p><p>Left trigger changes the Blitz intake side</p><p>D-pad up uses unstick</p></section>
       </div>
-      <p>Offline: choose keyboard or the matching numbered gamepad on each player card. Only one player uses the keyboard at a time. Online: this browser's keyboard or first active gamepad controls its claimed seat.</p>
+      <p>Offline: use the live activity chart to identify and assign each keyboard or controller input. Online: this browser's keyboard or first connected gamepad controls its claimed spot. Use Swap Spots to move player control profiles between robots.</p>
       <button class="primary wide" type="button" data-close-modal>Got it</button>
     </div>
   </div>
@@ -141,6 +143,15 @@
       </div>
       <div id="results-players" class="results-players"></div>
       <button class="primary wide" type="button" data-close-results>Close Results</button>
+    </div>
+  </div>
+
+  <div id="swap-dialog" class="modal" role="dialog" aria-modal="true" aria-labelledby="swap-title" hidden>
+    <div class="modal-card swap-card">
+      <button id="swap-dialog-close" class="modal-close" type="button" aria-label="Close Swap Spots">Ã—</button>
+      <p class="eyebrow">Control Assignment</p>
+      <h2 id="swap-title">Swap Spots</h2>
+      <div id="swap-dialog-content"></div>
     </div>
   </div>
 

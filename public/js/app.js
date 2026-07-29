@@ -1,4 +1,12 @@
 import { DEFAULT_PLAYERS, FIXED_DT } from "../../shared/constants.js";
+import {
+  assignInputSource,
+  gamepadSource,
+  normalizeInputSource,
+  normalizeUniqueAssignments,
+  swapPlayerProfiles,
+  unassignInputSource
+} from "../../shared/assignments.js";
 import { reconfigurePlayer, createGameState } from "../../shared/state.js";
 import { resetMatch, startMatch, stepSimulation, stopMatch } from "../../shared/simulation.js";
 import { InputManager } from "./input.js";
@@ -16,6 +24,8 @@ class BreadMuncherApp {
     this.lastFrameAt = performance.now();
     this.lastUiAt = 0;
     this.previousLocalStatus = this.localState.status;
+    this.pendingSwapActions = [];
+    this.answeredSwapActions = new Set();
     this.renderer = new Renderer(document.querySelector("#field"));
     this.renderer.setLocalState(this.localState);
     this.input = new InputManager(() => {
@@ -31,27 +41,40 @@ class BreadMuncherApp {
       resetMatch: () => this.reset(),
       claimSeat: (seat) => this.online.claimSeat(seat),
       releaseSeat: () => this.online.releaseSeat(),
-      updatePlayer: (seat, update) => this.updatePlayer(seat, update)
+      updatePlayer: (seat, update) => this.updatePlayer(seat, update),
+      assignInput: (source, seat) => this.assignInput(source, seat),
+      openSwap: () => this.openSwap(),
+      submitSwap: (sourceSeat, targetSeat) => this.submitSwap(sourceSeat, targetSeat),
+      answerSwap: (requestId, role, accepted) => this.answerSwap(requestId, role, accepted),
+      cancelSwap: (requestId) => this.online.cancelSwap(requestId),
+      resultsClosed: () => this.presentSwapAction(),
+      swapDialogClosed: () => this.swapDialogClosed()
     });
     this.bindOnlineEvents();
   }
 
   createLocalState() {
-    let keyboardAssigned = false;
+    let savedAssignments = {};
+    try {
+      savedAssignments = JSON.parse(localStorage.getItem("breadsim-input-assignments-v2") || "{}") || {};
+    } catch {
+      savedAssignments = {};
+    }
     const players = DEFAULT_PLAYERS.map((player) => ({
       ...player,
       name: localStorage.getItem(`breadsim-player-name-${player.seat}`) || player.name,
-      inputDevice: (() => {
-        const saved = localStorage.getItem(`breadsim-player-input-${player.seat}`);
-        const requested = ["keyboard", "controller"].includes(saved) ? saved : player.inputDevice;
-        if (requested === "keyboard" && !keyboardAssigned) {
-          keyboardAssigned = true;
-          return "keyboard";
-        }
-        return "controller";
+      inputSource: (() => {
+        if (Object.hasOwn(savedAssignments, player.seat)) return normalizeInputSource(savedAssignments[player.seat]);
+        const legacy = localStorage.getItem(`breadsim-player-input-${player.seat}`);
+        if (legacy === "keyboard") return "keyboard";
+        if (legacy === "controller") return gamepadSource(player.seat - 1);
+        return normalizeInputSource(player.inputSource);
       })()
     }));
-    return createGameState({ seed: 0x5eed1234, players });
+    normalizeUniqueAssignments(players);
+    const state = createGameState({ seed: 0x5eed1234, players });
+    this.persistLocalProfiles?.(state.players);
+    return state;
   }
 
   async initialize() {
@@ -84,8 +107,13 @@ class BreadMuncherApp {
     });
     this.online.addEventListener("roomState", ({ detail }) => {
       this.roomState = detail;
+      this.renderer.setControlledSeat(detail.ownedSeat);
+      this.pendingSwapActions = detail.swapActions || [];
+      const actionKeys = new Set(this.pendingSwapActions.map((action) => `${action.id}:${action.role}`));
+      for (const key of this.answeredSwapActions) if (!actionKeys.has(key)) this.answeredSwapActions.delete(key);
       this.ui.updateRoom(detail);
       this.updateOnlineUi(true);
+      this.presentSwapAction();
     });
     this.online.addEventListener("seatAssigned", ({ detail }) => {
       this.renderer.setControlledSeat(detail.seat);
@@ -112,6 +140,12 @@ class BreadMuncherApp {
     });
     this.online.addEventListener("matchEnded", ({ detail }) => {
       this.ui.showResults(detail.scoreRed, detail.scoreBlue, detail.players, this.roomState?.players);
+    });
+    this.online.addEventListener("swapApplied", ({ detail }) => {
+      this.ui.toast(`Controls moved from Spot ${detail.sourceSeat} to Spot ${detail.targetSeat}.`);
+    });
+    this.online.addEventListener("swapRejected", ({ detail }) => {
+      this.ui.toast(detail.message || "The swap request was closed without changes.", true);
     });
   }
 
@@ -217,6 +251,7 @@ class BreadMuncherApp {
     } else if (status === "running" || status === "countdown") {
       stopMatch(this.localState);
     } else {
+      if (this.ui.swapDialogOpen) return;
       startMatch(this.localState);
     }
   }
@@ -224,6 +259,87 @@ class BreadMuncherApp {
   reset() {
     if (this.mode === "online") this.online.command("resetMatch");
     else resetMatch(this.localState);
+  }
+
+  persistLocalProfiles(players = this.localState.players) {
+    const assignments = {};
+    for (const player of players) {
+      assignments[player.seat] = player.inputSource || null;
+      localStorage.setItem(`breadsim-player-name-${player.seat}`, player.name);
+    }
+    localStorage.setItem("breadsim-input-assignments-v2", JSON.stringify(assignments));
+  }
+
+  assignInput(source, targetSeat) {
+    if (this.mode !== "offline" || ["countdown", "running"].includes(this.localState.status)) return;
+    const changed = targetSeat === null
+      ? unassignInputSource(this.localState.players, source)
+      : assignInputSource(this.localState.players, source, targetSeat);
+    if (!changed) return;
+    this.input.neutralize();
+    this.persistLocalProfiles();
+    this.renderLocalLobby();
+  }
+
+  openSwap() {
+    if (this.mode === "offline") {
+      if (["countdown", "running"].includes(this.localState.status)) {
+        this.ui.toast("Offline spot swaps are available between matches.", true);
+        return;
+      }
+      this.ui.showSwapComposer(this.localState.players);
+      return;
+    }
+    if (!this.roomState?.ownedSeat) {
+      this.ui.toast("Claim a player spot before requesting a swap.", true);
+      return;
+    }
+    const nextAction = this.pendingSwapActions.find((action) => !this.answeredSwapActions.has(`${action.id}:${action.role}`));
+    if (nextAction) {
+      this.ui.showSwapApproval(nextAction, this.roomState.players);
+      return;
+    }
+    this.ui.showSwapComposer(this.roomState.players, {
+      online: true,
+      sourceSeat: this.roomState.ownedSeat,
+      pendingSwaps: this.roomState.pendingSwaps || [],
+      isHost: this.roomState.isHost,
+      active: ["countdown", "running"].includes(this.activeStatus())
+    });
+  }
+
+  submitSwap(sourceSeat, targetSeat) {
+    if (this.mode === "online") {
+      if (sourceSeat !== this.online.ownedSeat) return;
+      this.online.requestSwap(targetSeat);
+      this.ui.toast(["countdown", "running"].includes(this.activeStatus())
+        ? "Swap request queued until this match finishes."
+        : "Swap request sent.");
+      return;
+    }
+    if (["countdown", "running"].includes(this.localState.status)) return;
+    if (!swapPlayerProfiles(this.localState.players, sourceSeat, targetSeat)) return;
+    this.input.neutralize();
+    this.persistLocalProfiles();
+    this.renderLocalLobby();
+    this.ui.toast(`Player controls moved from Spot ${sourceSeat} to Spot ${targetSeat}.`);
+  }
+
+  answerSwap(requestId, role, accepted) {
+    this.answeredSwapActions.add(`${requestId}:${role}`);
+    if (role === "target") this.online.respondSwap(requestId, accepted);
+    else this.online.reviewSwap(requestId, accepted);
+  }
+
+  presentSwapAction() {
+    if (this.mode !== "online" || this.ui.resultsOpen || this.ui.swapDialogOpen) return;
+    const action = this.pendingSwapActions.find((item) => !this.answeredSwapActions.has(`${item.id}:${item.role}`));
+    if (action && this.roomState?.players) this.ui.showSwapApproval(action, this.roomState.players);
+  }
+
+  swapDialogClosed() {
+    if (this.mode === "online") this.updateOnlineUi(true);
+    else this.updateLocalUi();
   }
 
   updatePlayer(seat, update) {
@@ -236,21 +352,12 @@ class BreadMuncherApp {
       this.ui.toast("Player settings are locked during a match.", true);
       return;
     }
-    if (update.inputDevice === "keyboard") {
-      for (const player of this.localState.players) {
-        if (player.seat === seat || player.inputDevice !== "keyboard") continue;
-        reconfigurePlayer(this.localState, player.seat, { inputDevice: "controller" });
-        localStorage.setItem(`breadsim-player-input-${player.seat}`, "controller");
-      }
-    }
     reconfigurePlayer(this.localState, seat, update);
     if (typeof update.name === "string") {
       const player = this.localState.players.find((item) => item.seat === seat);
       localStorage.setItem(`breadsim-player-name-${seat}`, player.name);
     }
-    if (["keyboard", "controller"].includes(update.inputDevice)) {
-      localStorage.setItem(`breadsim-player-input-${seat}`, update.inputDevice);
-    }
+    this.persistLocalProfiles();
     this.renderLocalLobby();
   }
 
@@ -259,6 +366,7 @@ class BreadMuncherApp {
     this.lastFrameAt = time;
     if (this.mode === "offline") this.advanceOffline(elapsed);
     else this.sendOnlineInput();
+    if (this.mode === "offline") this.ui.updateInputActivity(this.input.activitySnapshot());
     this.renderer.render(elapsed);
     if (time - this.lastUiAt > 150) {
       this.lastUiAt = time;
@@ -274,7 +382,7 @@ class BreadMuncherApp {
       const inputs = {};
       for (const player of this.localState.players) {
         if (player.enabled) {
-          inputs[player.seat] = this.input.frameForSeat(player.seat, { inputDevice: player.inputDevice });
+          inputs[player.seat] = this.input.frameForSeat(player.seat, { inputSource: player.inputSource });
         }
       }
       const events = stepSimulation(this.localState, inputs, FIXED_DT, this.localState.simulationTime + FIXED_DT);

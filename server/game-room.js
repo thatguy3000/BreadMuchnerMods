@@ -38,6 +38,8 @@ export class GameRoom {
     this.connections = new Map();
     this.ownership = new Map();
     this.inputs = new Map();
+    this.pendingSwaps = new Map();
+    this.nextSwapId = 1;
     this.hostId = null;
     this.onEmpty = onEmpty;
     this.log = log;
@@ -134,6 +136,18 @@ export class GameRoom {
       case "updateLobbyPlayer":
         this.updateLobby(entry, message);
         break;
+      case "createSwapRequest":
+        this.createSwapRequest(entry, message);
+        break;
+      case "respondSwapRequest":
+        this.respondSwapRequest(entry, message);
+        break;
+      case "reviewSwapRequest":
+        this.reviewSwapRequest(entry, message);
+        break;
+      case "cancelSwapRequest":
+        this.cancelSwapRequest(entry, message);
+        break;
       case "startMatch":
         this.hostCommand(entry, "start");
         break;
@@ -181,6 +195,10 @@ export class GameRoom {
         : "That seat is temporarily reserved for a reconnecting player.");
       return;
     }
+    if (this.swapSeatReserved(seat)) {
+      this.error(entry.socket, "SEAT_SWAP_RESERVED", "That spot is reserved by a pending swap request.");
+      return;
+    }
     const reconnectToken = token();
     entry.seat = seat;
     this.ownership.set(seat, {
@@ -204,6 +222,7 @@ export class GameRoom {
       return;
     }
     const seat = entry.seat;
+    this.cancelSwapRequestsForSeat(seat, "A player involved in the request left their spot.");
     const owner = this.ownership.get(seat);
     if (owner?.connectionId === entry.id) {
       this.ownership.delete(seat);
@@ -238,6 +257,196 @@ export class GameRoom {
     this.broadcastSnapshot(true);
   }
 
+  matchActive() {
+    return this.state.status === "countdown" || this.state.status === "running";
+  }
+
+  swapSeatReserved(seat) {
+    return [...this.pendingSwaps.values()].some((request) => request.sourceSeat === seat || request.targetSeat === seat);
+  }
+
+  swapSummary(request) {
+    return {
+      id: request.id,
+      sourceSeat: request.sourceSeat,
+      targetSeat: request.targetSeat,
+      status: request.status,
+      createdAt: request.createdAt
+    };
+  }
+
+  createSwapRequest(entry, message) {
+    if (!entry.seat) {
+      this.error(entry.socket, "NO_SEAT", "Claim a player spot before requesting a swap.");
+      return;
+    }
+    const targetSeat = validateSeat(message.targetSeat);
+    if (!targetSeat || targetSeat === entry.seat) {
+      this.error(entry.socket, "INVALID_SWAP_TARGET", "Choose a different spot from 1 through 6.");
+      return;
+    }
+    if (this.swapSeatReserved(entry.seat) || this.swapSeatReserved(targetSeat)) {
+      this.error(entry.socket, "SWAP_CONFLICT", "One of those spots already has a pending request.");
+      return;
+    }
+    const targetOwner = this.ownership.get(targetSeat);
+    const request = {
+      id: `swap-${this.nextSwapId++}`,
+      requesterId: entry.id,
+      sourceSeat: entry.seat,
+      targetSeat,
+      targetConnectionId: targetOwner?.connectionId || null,
+      status: this.matchActive() ? "queued" : targetOwner ? "awaiting_target" : "awaiting_host",
+      createdAt: Date.now()
+    };
+    this.pendingSwaps.set(request.id, request);
+    this.broadcastRoomState();
+    this.logEvent("swap_requested", this.swapSummary(request));
+  }
+
+  getSwapRequest(entry, message) {
+    if (typeof message.requestId !== "string" || message.requestId.length > 32) {
+      this.error(entry.socket, "INVALID_SWAP_REQUEST", "That swap request is invalid.");
+      return null;
+    }
+    const request = this.pendingSwaps.get(message.requestId);
+    if (!request) {
+      this.error(entry.socket, "SWAP_NOT_FOUND", "That swap request is no longer pending.");
+      return null;
+    }
+    return request;
+  }
+
+  respondSwapRequest(entry, message) {
+    const request = this.getSwapRequest(entry, message);
+    if (!request) return;
+    if (this.matchActive() || request.status !== "awaiting_target") {
+      this.error(entry.socket, "SWAP_NOT_READY", "This request is not awaiting the target player's response.");
+      return;
+    }
+    if (entry.seat !== request.targetSeat || entry.id !== request.targetConnectionId) {
+      this.error(entry.socket, "SWAP_TARGET_ONLY", "Only the requested target player can answer this step.");
+      return;
+    }
+    if (typeof message.accepted !== "boolean") {
+      this.error(entry.socket, "INVALID_SWAP_RESPONSE", "Swap responses must explicitly accept or deny the request.");
+      return;
+    }
+    if (!message.accepted) {
+      this.rejectSwap(request, "The target player denied the swap request.");
+      return;
+    }
+    request.status = "awaiting_host";
+    this.broadcastRoomState();
+    this.logEvent("swap_target_accepted", this.swapSummary(request));
+  }
+
+  reviewSwapRequest(entry, message) {
+    const request = this.getSwapRequest(entry, message);
+    if (!request) return;
+    if (entry.id !== this.hostId) {
+      this.error(entry.socket, "HOST_ONLY", "Only the room host can approve the final swap.");
+      return;
+    }
+    if (this.matchActive() || request.status !== "awaiting_host") {
+      this.error(entry.socket, "SWAP_NOT_READY", "This request is not ready for host review.");
+      return;
+    }
+    if (typeof message.accepted !== "boolean") {
+      this.error(entry.socket, "INVALID_SWAP_RESPONSE", "Swap responses must explicitly accept or deny the request.");
+      return;
+    }
+    if (!message.accepted) {
+      this.rejectSwap(request, "The host denied the swap request.");
+      return;
+    }
+    this.applySwap(request, entry.socket);
+  }
+
+  cancelSwapRequest(entry, message) {
+    const request = this.getSwapRequest(entry, message);
+    if (!request) return;
+    if (entry.id !== request.requesterId && entry.id !== this.hostId) {
+      this.error(entry.socket, "SWAP_CANCEL_FORBIDDEN", "Only the requester or host can cancel this request.");
+      return;
+    }
+    this.rejectSwap(request, "The swap request was canceled.");
+  }
+
+  rejectSwap(request, message) {
+    this.pendingSwaps.delete(request.id);
+    this.broadcast(makeMessage("swapRejected", { roomCode: this.code, requestId: request.id, message }));
+    this.broadcastRoomState();
+    this.logEvent("swap_rejected", { ...this.swapSummary(request), message });
+  }
+
+  applySwap(request, socket) {
+    const sourceOwner = this.ownership.get(request.sourceSeat);
+    const targetOwner = this.ownership.get(request.targetSeat);
+    if (!sourceOwner || sourceOwner.connectionId !== request.requesterId) {
+      this.error(socket, "SWAP_STALE", "The requesting player no longer owns the original spot.");
+      this.rejectSwap(request, "The requesting player changed spots before approval.");
+      return;
+    }
+    if ((request.targetConnectionId && targetOwner?.connectionId !== request.targetConnectionId)
+      || (!request.targetConnectionId && targetOwner)) {
+      this.error(socket, "SWAP_STALE", "The destination spot changed before approval.");
+      this.rejectSwap(request, "The destination spot changed before approval.");
+      return;
+    }
+
+    const sourcePlayer = this.state.players.find((player) => player.seat === request.sourceSeat);
+    const targetPlayer = this.state.players.find((player) => player.seat === request.targetSeat);
+    if (targetOwner) {
+      this.ownership.set(request.sourceSeat, targetOwner);
+      this.ownership.set(request.targetSeat, sourceOwner);
+      const targetEntry = [...this.connections.values()].find((item) => item.id === targetOwner.connectionId);
+      if (targetEntry) targetEntry.seat = request.sourceSeat;
+      [sourcePlayer.name, targetPlayer.name] = [targetPlayer.name, sourcePlayer.name];
+    } else {
+      this.ownership.delete(request.sourceSeat);
+      this.ownership.set(request.targetSeat, sourceOwner);
+      targetPlayer.name = sourcePlayer.name;
+      sourcePlayer.name = `Player ${request.sourceSeat}`;
+      this.inputs.delete(request.sourceSeat);
+    }
+    const sourceEntry = [...this.connections.values()].find((item) => item.id === sourceOwner.connectionId);
+    if (sourceEntry) sourceEntry.seat = request.targetSeat;
+    const neutral = () => ({ ...NEUTRAL_INPUT, receivedAt: Date.now() });
+    this.inputs.set(request.targetSeat, neutral());
+    if (targetOwner) this.inputs.set(request.sourceSeat, neutral());
+
+    this.pendingSwaps.delete(request.id);
+    this.previousSnapshot = null;
+    this.broadcast(makeMessage("swapApplied", {
+      roomCode: this.code,
+      requestId: request.id,
+      sourceSeat: request.sourceSeat,
+      targetSeat: request.targetSeat,
+      occupied: Boolean(targetOwner)
+    }));
+    this.broadcastRoomState();
+    this.broadcastSnapshot(true);
+    this.logEvent("swap_applied", this.swapSummary(request));
+  }
+
+  activateQueuedSwaps() {
+    let changed = false;
+    for (const request of this.pendingSwaps.values()) {
+      if (request.status !== "queued") continue;
+      const targetOwner = this.ownership.get(request.targetSeat);
+      request.targetConnectionId = targetOwner?.connectionId || null;
+      request.status = targetOwner ? "awaiting_target" : "awaiting_host";
+      changed = true;
+    }
+    if (changed) this.broadcastRoomState();
+  }
+
+  cancelSwapRequestsForSeat(seat, message) {
+    const requests = [...this.pendingSwaps.values()].filter((request) => request.sourceSeat === seat || request.targetSeat === seat);
+    for (const request of requests) this.rejectSwap(request, message);
+  }
+
   hostCommand(entry, command) {
     if (entry.id !== this.hostId) {
       this.error(entry.socket, "HOST_ONLY", "Only the room host can control the match.");
@@ -250,6 +459,10 @@ export class GameRoom {
       }
       if (this.ownership.size === 0) {
         this.error(entry.socket, "EMPTY_LOBBY", "At least one seat must be claimed.");
+        return;
+      }
+      if (this.pendingSwaps.size > 0) {
+        this.error(entry.socket, "SWAPS_PENDING", "Resolve or cancel every swap request before starting another match.");
         return;
       }
       if (!startMatch(this.state)) {
@@ -266,6 +479,7 @@ export class GameRoom {
       }
       this.broadcast(makeMessage("matchEvent", { roomCode: this.code, event: { type: "matchStopped" } }));
       this.logEvent("match_stopped");
+      this.activateQueuedSwaps();
     } else {
       resetMatch(this.state);
       this.previousSnapshot = null;
@@ -303,6 +517,7 @@ export class GameRoom {
 
     for (const [seat, owner] of this.ownership) {
       if (!owner.connected && owner.disconnectDeadline <= wallNow) {
+        this.cancelSwapRequestsForSeat(seat, "A player involved in the request disconnected.");
         this.ownership.delete(seat);
         this.inputs.delete(seat);
         this.logEvent("seat_reservation_expired", { seat });
@@ -335,6 +550,7 @@ export class GameRoom {
             scoreBlue: event.scoreBlue,
             players: this.state.robots.map((robot) => ({ seat: robot.seat, score: robot.score }))
           }));
+          this.activateQueuedSwaps();
           this.logEvent("match_ended", { scoreRed: event.scoreRed, scoreBlue: event.scoreBlue });
         } else {
           this.broadcast(makeMessage("matchEvent", { roomCode: this.code, event }));
@@ -358,7 +574,20 @@ export class GameRoom {
     }
   }
 
-  roomState() {
+  swapActionsFor(entry) {
+    if (!entry || this.matchActive()) return [];
+    const actions = [];
+    for (const request of this.pendingSwaps.values()) {
+      if (request.status === "awaiting_target" && entry.id === request.targetConnectionId) {
+        actions.push({ ...this.swapSummary(request), role: "target" });
+      } else if (request.status === "awaiting_host" && entry.id === this.hostId) {
+        actions.push({ ...this.swapSummary(request), role: "host" });
+      }
+    }
+    return actions;
+  }
+
+  roomState(entry = null) {
     const hostEntry = [...this.connections.values()].find((entry) => entry.id === this.hostId);
     return makeMessage("roomState", {
       roomCode: this.code,
@@ -366,14 +595,18 @@ export class GameRoom {
       hostSeat: hostEntry?.seat || null,
       status: this.state.status,
       players: this.state.players.map((player) => publicLobbyPlayer(player, this.ownership)),
-      claimedSeats: this.ownership.size
+      claimedSeats: this.ownership.size,
+      pendingSwaps: [...this.pendingSwaps.values()].map((request) => this.swapSummary(request)),
+      pendingSwapCount: this.pendingSwaps.size,
+      startBlockedBySwaps: this.pendingSwaps.size > 0,
+      swapActions: this.swapActionsFor(entry)
     });
   }
 
   sendRoomState(socket) {
     const entry = this.connections.get(socket);
     this.send(socket, {
-      ...this.roomState(),
+      ...this.roomState(entry),
       connectionId: entry?.id || null,
       isHost: entry?.id === this.hostId,
       ownedSeat: entry?.seat || null
